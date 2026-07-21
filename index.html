@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>嗎哪收集・天天夠用</title>
+<meta name="description" content="連起同款的嗎哪或鵪鶉收進罐裡——每天收每天的分,天父天天供應!(出16,和合本)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#b8863c">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#3a2c18;overflow:hidden;touch-action:none;
+    font-family:"Microsoft JhengHei","PingFang TC",system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;background:#eec98e;border-radius:6px;touch-action:none}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<script src="game.js"></script>
+<script>
+// play-stats 三層匿名計數(lobby-play-rank):開啟 10 分去重;-start/-done 不去重;-done 帶 t=秒。零個資。
+(function(){
+  var host = location.hostname;
+  if (host === 'localhost' || host === '127.0.0.1' || location.protocol === 'file:') return;
+  window.__ping = function(key, t){
+    try{
+      var u = 'https://hfpc-play-stats.summer09201017.workers.dev/api/ping?g=' + key + (t ? '&t=' + t : '');
+      if (navigator.sendBeacon) navigator.sendBeacon(u); else fetch(u, { mode: 'no-cors' });
+    }catch(e){}
+  };
+  try{
+    var k = 'ping-manna-tsum', now = Date.now(), last = 0;
+    try{ last = +localStorage.getItem(k) || 0; }catch(e){}
+    if (now - last > 10*60*1000){ window.__ping('manna-tsum'); try{ localStorage.setItem(k, ''+now); }catch(e){} }
+  }catch(e){}
+})();
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
+}
+</script>
+</body>
+</html>

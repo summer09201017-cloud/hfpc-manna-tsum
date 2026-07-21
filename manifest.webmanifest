@@ -1,0 +1,18 @@
+{
+  "name": "嗎哪收集・天天夠用",
+  "short_name": "嗎哪收集",
+  "description": "連起同款的嗎哪或鵪鶉收進罐裡——每天收每天的分,天父天天供應!(出16,和合本)",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#3a2c18",
+  "theme_color": "#b8863c",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
