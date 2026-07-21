@@ -56,6 +56,7 @@ var muted = false;
 try{ muted = localStorage.getItem('manna-mute') === '1'; }catch(e){}
 var scene = 'menu';      // menu | play | win
 var banner = null;       // {text, t}
+var hintT = 0, checkT = 0, hintGroup = null;   // 提示/救援(07-21)
 
 function activeTypes(){
   // 幼幼 4 款=2嗎哪2鵪鶉好分辨;兒童 5;青少年 7 全員
@@ -164,6 +165,7 @@ function hitTsum(p){
   return null;
 }
 function onDown(e){
+  hintT = 0; hintGroup = null;
   e.preventDefault();
   var p = evPos(e);
   if (scene === 'menu'){ menuTap(p); return; }
@@ -209,6 +211,7 @@ function collect(list){
   var portions = n * M.feed * mult;
   fed = Math.min(M.target, fed + portions);
   chainCount++;
+  hintT = 0; hintGroup = null;
   chordCollect(n);
   for (var i=0;i<n;i++){
     var t = list[i], idx = tsums.indexOf(t);
@@ -231,6 +234,46 @@ function collect(list){
   }
 }
 
+
+// ---------- 提示+卡死救援(07-21 修:場上可能完全沒有可連的同款相鄰組=卡死) ----------
+function findGroup(){
+  for (var i=0;i<tsums.length;i++){
+    var seed = tsums[i];
+    var group = [seed], seen = [seed], grow = true;
+    while (grow && group.length < 9){
+      grow = false;
+      for (var j=0;j<tsums.length;j++){
+        var c = tsums[j];
+        if (seen.indexOf(c) !== -1 || c.t !== seed.t) continue;
+        var lastT = group[group.length-1];
+        var dx=c.x-lastT.x, dy=c.y-lastT.y, lim=(c.r+lastT.r)*1.35;
+        if (dx*dx+dy*dy <= lim*lim){ group.push(c); seen.push(c); grow = true; break; }
+      }
+    }
+    if (group.length >= M.minChain) return group;
+  }
+  return null;
+}
+function rescue(){
+  // 無鏈可連的溫柔救援:挑一顆,把離它最近的幾顆變成同款(必產生可連組),火花+橫幅
+  var cands = tsums.filter(function(t){ return !t.t.wild; });
+  if (cands.length <= M.minChain) return false;
+  var seed = cands[(Math.random()*cands.length)|0];
+  var rest = cands.filter(function(t){ return t !== seed; });
+  rest.sort(function(a,b){
+    var da=(a.x-seed.x)*(a.x-seed.x)+(a.y-seed.y)*(a.y-seed.y);
+    var db=(b.x-seed.x)*(b.x-seed.x)+(b.y-seed.y)*(b.y-seed.y);
+    return da-db;
+  });
+  for (var i=0;i<M.minChain-1 && i<rest.length;i++){
+    rest[i].t = seed.t;
+    for (var k=0;k<6;k++) sparks.push({ x:rest[i].x, y:rest[i].y, vx:rnd(-2,2), vy:rnd(-3,1), life:1 });
+  }
+  banner = { text:"✨ 神眷顧——嗎哪聚在一起了!", t:2.0 };
+  blip(659,0.3,'triangle',0.1);
+  hintGroup = null; hintT = 0;
+  return true;
+}
 // ---------- 畫圖 ----------
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
   ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
@@ -450,6 +493,7 @@ function startGame(){
   fed = 0; shownFed = 0; chainCount = 0; won = false; blessT = 0; blessSpoken = false;
   nextBlessAt = modeKey==='young' ? 4 : 6;
   spawnQueue = 0; doneSent = false;
+  hintT = 0; checkT = 0; hintGroup = null;
   var n = Math.min(CAP-6, Math.floor((W-20)/(2*M.r)) * 6);
   for (var i=0;i<n;i++) spawnTsum();
   scene = 'play'; playing = true; startTime = Date.now();
@@ -520,10 +564,31 @@ function loop(ms){
     spawnTsum(); spawnQueue--; spawnTick = 0.12;
   }
   physics(dt);
+  // 提示+卡死救援:4 秒沒動作亮提示;場上真的無鏈可連就溫柔聚攏(每秒檢查一次)
+  hintT += dt; checkT += dt;
+  if (checkT >= 1){
+    checkT = 0;
+    if (hintGroup){
+      for (var hi=0;hi<hintGroup.length;hi++) if (tsums.indexOf(hintGroup[hi])===-1){ hintGroup=null; break; }
+    }
+    if (!hintGroup && !dragging){
+      var g0 = findGroup();
+      if (!g0 && spawnQueue===0 && flying.length===0){ rescue(); g0 = findGroup(); }
+      if (hintT >= 4 && g0) hintGroup = g0;
+    }
+  }
   shownFed += (fed - shownFed) * Math.min(1, dt*6);
   drawScene(t);
   drawChainLine();
   for (var i=0;i<tsums.length;i++) drawTsum(tsums[i]);
+  if (hintGroup && !dragging){   // 提示:金色光圈脈動
+    ctx.strokeStyle = 'rgba(255,235,140,'+(0.55+0.35*Math.sin(t*6))+')';
+    ctx.lineWidth = 5;
+    for (i=0;i<hintGroup.length;i++){
+      var hg = hintGroup[i];
+      ctx.beginPath(); ctx.arc(hg.x, hg.y, hg.r*1.12+2*Math.sin(t*6), 0, 7); ctx.stroke();
+    }
+  }
   // 飛向營地的口糧
   for (i=flying.length-1;i>=0;i--){
     var f = flying[i];
@@ -578,6 +643,8 @@ if (location.search.indexOf('test=1') !== -1){
       }
       return 0;
     },
+    findGroup: function(){ var g=findGroup(); return g?g.length:0; },
+    rescue: function(){ return rescue(); },
     win: function(){ fed = M.target - 1; return this.autoChain(); }
   };
 }
