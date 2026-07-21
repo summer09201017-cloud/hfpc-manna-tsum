@@ -26,14 +26,18 @@ var TYPES = [
   {id:'m3', kind:'manna', name:'金黃嗎哪', c1:'#f4b03c', c2:'#c67f18', wheat:true},
   {id:'m4', kind:'manna', name:'晨露嗎哪', c1:'#b4d4f2', c2:'#7ba6cc', drop:true},
   {id:'q0', kind:'quail', name:'褐鵪鶉',   c1:'#a86e38', c2:'#7a4c22'},
-  {id:'q1', kind:'quail', name:'灰鵪鶉',   c1:'#9aa4ac', c2:'#6d7880', brow:true}
+  {id:'q1', kind:'quail', name:'灰鵪鶉',   c1:'#9aa4ac', c2:'#6d7880', brow:true},
+  // 07-22 擴充:更多嗎哪(使用者點名),一樣「顏色拉開+形狀記號」
+  {id:'m5', kind:'manna', name:'莓果嗎哪',   c1:'#e08aa0', c2:'#b8607a', heart:true},
+  {id:'m6', kind:'manna', name:'紫羅蘭嗎哪', c1:'#b39ade', c2:'#8a6fb8', star2:true},
+  {id:'m7', kind:'manna', name:'海鹽嗎哪',   c1:'#7cc8d8', c2:'#4f9cb0', wave:true}
 ];
 
 // ---------- 年齡三檔(kid-age-modes) ----------
 var MODES = {
   young:{ label:'幼幼(4-6)', types:4, minChain:2, target:600,  r:47, feed:20 },
-  kid:  { label:'兒童(7-11)', types:6, minChain:3, target:2500, r:38, feed:15 },
-  teen: { label:'青少年(12+)', types:7, minChain:4, target:5000, r:32, feed:12 }
+  kid:  { label:'兒童(7-11)', types:7, minChain:3, target:3000, r:38, feed:13 },
+  teen: { label:'青少年(12+)', types:10, minChain:4, target:6000, r:32, feed:10 }
 };
 var modeKey = 'kid';
 try{ modeKey = localStorage.getItem('manna-mode') || 'kid'; }catch(e){}
@@ -61,10 +65,9 @@ var hintT = 0, checkT = 0, hintGroup = null;   // 提示/救援(07-21)
 var dbgChecks = 0, dbgRescues = 0;             // 07-22 診斷計數(test 鉤子讀)
 
 function activeTypes(){
-  // 幼幼 4 款=2嗎哪2鵪鶉好分辨;兒童 5;青少年 7 全員
+  // 幼幼 4 款=2嗎哪2鵪鶉好分辨;兒童 7;青少年 10 全員(07-22 圖鑑擴充)
   if (M.types === 4) return [TYPES[0], TYPES[3], TYPES[5], TYPES[6]];
-  if (M.types === 5) return [TYPES[0], TYPES[1], TYPES[3], TYPES[5], TYPES[6]];
-  if (M.types === 6) return [TYPES[0], TYPES[1], TYPES[2], TYPES[3], TYPES[5], TYPES[6]];
+  if (M.types === 7) return [TYPES[0], TYPES[1], TYPES[2], TYPES[3], TYPES[5], TYPES[6], TYPES[7]];
   return TYPES;
 }
 
@@ -118,7 +121,7 @@ function rnd(a,b){ return a + Math.random()*(b-a); }
 function spawnTsum(){
   var ts = activeTypes(), t, x;
   // 07-22:群聚生成——45% 抄場上隨機一顆的型別、落在它附近,讓 5+ 長鏈自然可達(鏈長本無上限,是密度不夠)
-  var anchor = tsums.length && Math.random() < 0.45 ? tsums[(Math.random()*tsums.length)|0] : null;
+  var anchor = playing && tsums.length && Math.random() < 0.45 ? tsums[(Math.random()*tsums.length)|0] : null;   // 07-22:開場鋪場不群聚(會滾雪球整片同色),只在補球時群聚
   if (anchor && !anchor.t.wild){
     t = anchor.t;
     x = Math.max(M.r+6, Math.min(W-M.r-6, anchor.x + rnd(-70,70)));
@@ -379,6 +382,23 @@ function drawTsum(t, xx, yy, rr){
       ctx.beginPath(); ctx.arc(x-r*0.35, y-r*0.32, r*0.11, 0, 7); ctx.fill();
       ctx.fillStyle='rgba(255,255,255,.85)';
       ctx.beginPath(); ctx.arc(x+r*0.33, y+r*0.24, r*0.05, 0, 7); ctx.fill();
+    }
+    if (ty.heart){                       // 莓果:深紅愛心
+      ctx.fillStyle = '#8a2038';
+      ctx.font = 'bold ' + Math.max(10, r*0.45) + 'px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('♥', x+r*0.35, y+r*0.45);
+    }
+    if (ty.star2){                       // 紫羅蘭:白星
+      ctx.fillStyle = 'rgba(255,255,255,.9)';
+      ctx.font = 'bold ' + Math.max(10, r*0.45) + 'px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('★', x-r*0.35, y-r*0.25);
+    }
+    if (ty.wave){                        // 海鹽:兩道波浪
+      ctx.strokeStyle = 'rgba(30,90,110,.6)'; ctx.lineWidth = Math.max(2, r*0.08); ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(x-r*0.45, y+r*0.25);
+      ctx.quadraticCurveTo(x-r*0.2, y+r*0.1, x, y+r*0.25); ctx.quadraticCurveTo(x+r*0.2, y+r*0.4, x+r*0.45, y+r*0.25); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x-r*0.35, y-r*0.15);
+      ctx.quadraticCurveTo(x-r*0.1, y-r*0.3, x+r*0.1, y-r*0.15); ctx.stroke();
     }
     ballHighlight(x, y-r*0.04, r*0.96);
     drawFace(x, y-r*0.02, r, t.hi);
