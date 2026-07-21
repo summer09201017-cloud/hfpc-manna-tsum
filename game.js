@@ -538,7 +538,11 @@ function drawMenu(t){
     roundRect(W/2-170, y, 340, 72, 18); ctx.fill();
     ctx.fillStyle = sel ? '#4a3510' : '#fff';
     ctx.font = 'bold 30px "Microsoft JhengHei",sans-serif';
-    ctx.fillText(MODES[keys[i]].label + '・收滿 ' + MODES[keys[i]].target + ' 份', W/2, y+46);
+    // 07-22:標明「連N顆」——玩家會以為每檔都是連3
+    ctx.font = 'bold 28px "Microsoft JhengHei",sans-serif';
+    ctx.fillText(MODES[keys[i]].label, W/2, y+32);
+    ctx.font = '21px "Microsoft JhengHei",sans-serif';
+    ctx.fillText('同款連 ' + MODES[keys[i]].minChain + ' 顆・收滿 ' + MODES[keys[i]].target + ' 份', W/2, y+60);
     menuBtns.push({ x:W/2-170, y:y, w:340, h:72, key:keys[i] });
   }
   ctx.fillStyle = '#e8d5a0'; ctx.font = '20px sans-serif';
@@ -563,6 +567,7 @@ function startGame(){
   var n = Math.min(CAP-6, Math.floor((W-20)/(2*M.r)) * 6);
   for (var i=0;i<n;i++) spawnTsum();
   scene = 'play'; playing = true; startTime = Date.now();
+  banner = { text: '劃線連起 ' + M.minChain + ' 顆同款!', t: 3 };   // 07-22:各檔連鏈門檻不同(青少年=4),開場講清楚
   ac(); bgmStart(); speak('intro');
   if (window.__ping) window.__ping('manna-tsum-start');
 }
