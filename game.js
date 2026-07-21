@@ -645,6 +645,29 @@ function loop(ms){
         if (bad){ hintGroup=null; break; }
       }
     }
+    // 07-22:孤兒型別救援——場上同款總數 < minChain(永遠連不成,如卡在角落的最後一隻)
+    // 每秒遞色成「最近鄰居」的型別(火花提示);拖曳中不動、沒落定不動、wild 不動
+    if (!dragging){
+      var tc = {};
+      for (var oi=0;oi<tsums.length;oi++){ var oid=tsums[oi].t.id; tc[oid]=(tc[oid]||0)+1; }
+      for (oi=0;oi<tsums.length;oi++){
+        var orp = tsums[oi];
+        if (orp.t.wild || tc[orp.t.id] >= M.minChain) continue;
+        if (Math.abs(orp.y - orp.py) >= 1.5) continue;
+        var bn=null, bdd=1e9;
+        for (var oj=0;oj<tsums.length;oj++){
+          var oc = tsums[oj];
+          if (oc===orp || oc.t.wild || oc.t.id===orp.t.id) continue;
+          var odx=oc.x-orp.x, ody=oc.y-orp.y, od2=odx*odx+ody*ody;
+          if (od2<bdd){ bdd=od2; bn=oc; }
+        }
+        if (bn){
+          tc[orp.t.id]--; tc[bn.t.id]=(tc[bn.t.id]||0)+1;
+          orp.t = bn.t;
+          for (var ok=0;ok<6;ok++) sparks.push({ x:orp.x, y:orp.y, vx:rnd(-2,2), vy:rnd(-3,1), life:1 });
+        }
+      }
+    }
     if (!hintGroup && !dragging){
       var g0 = findGroup();
       // 07-22 修:場滿 CAP 時 spawnQueue 永遠掉不到 0(生成被 tsums.length<CAP 擋)
