@@ -44,6 +44,133 @@ try{ modeKey = localStorage.getItem('manna-mode') || 'kid'; }catch(e){}
 if(!MODES[modeKey]) modeKey = 'kid';
 var M = MODES[modeKey];
 var LINK_F = 1.12;   // 連結判定=半徑和×此倍率。落定接觸≈1.0;1.35 會把隔著空隙的兩顆判成相鄰(隔空相消)
+
+// ---------- 07-22 三包:限時衝刺關/關卡地圖(星星)/特殊角色(金色雙倍+搗蛋鬼) ----------
+var SPRINT_EVERY = 3;                                  // 每第 3、6、9…關=限時衝刺關
+var SPRINT_SECS = { young:90, kid:80, teen:70 };
+var GOLD_RATE = 0.07, TROUBLE_RATE = 0.05, TROUBLE_PENALTY = 3;
+var TROUBLE = { id:'tr', name:'貪吃烏鴉', c1:'#3f4650', c2:'#262b33', fc:'#6a7480', ec:'#f4f1e8', trouble:true };
+var sprint = false, sprintT = 0, bestChain = 0, lastStars = 1;
+var stars = {};                                        // {關號:最佳星數},依年齡檔存本機
+function isSprintLevel(lv){ return lv % SPRINT_EVERY === 0; }
+function maxLevel(){ try{ return Math.max(1, parseInt(localStorage.getItem('manna-lvl-'+modeKey))||1); }catch(e){ return 1; } }
+function loadStars(){ try{ stars = JSON.parse(localStorage.getItem('manna-stars-'+modeKey)||'{}')||{}; }catch(e){ stars = {}; } }
+function saveStars(lv, st){
+  if ((stars[lv]|0) >= st) return;
+  stars[lv] = st;
+  try{ localStorage.setItem('manna-stars-'+modeKey, JSON.stringify(stars)); }catch(e){}
+}
+function endLevelStars(){
+  lastStars = sprint ? (fed >= M.target*0.8 ? 3 : fed >= M.target*0.5 ? 2 : 1)
+                     : (bestChain >= M.minChain+4 ? 3 : bestChain >= M.minChain+2 ? 2 : 1);
+  saveStars(level, lastStars);
+}
+function sprintEnd(){
+  if (won) return;
+  endLevelStars();
+  won = true; scene = 'win'; winT = 0;
+  speak('win');
+  if (!doneSent){ doneSent = true; if (window.__ping) window.__ping('manna-tsum-done', Math.round((Date.now()-startTime)/1000)); }
+}
+// 特殊角色生成:重綁 spawnTsum(群聚錨若抄到搗蛋鬼先重骰;kid/teen 第2關起才出特殊)
+var _spawnTsumBase = spawnTsum;
+spawnTsum = function(){
+  _spawnTsumBase();
+  var sp = tsums[tsums.length-1];
+  if (!sp) return;
+  if (sp.t && sp.t.trouble){ var ts0 = activeTypes(); sp.t = ts0[(Math.random()*ts0.length)|0]; }
+  if (!playing || level < 2) return;
+  if (sp.t.wild) return;
+  if (modeKey !== 'young' && Math.random() < TROUBLE_RATE){
+    var trN = 0;
+    for (var i2=0;i2<tsums.length;i2++) if (tsums[i2].t.trouble) trN++;
+    if (trN < 2){ sp.t = { id:'tr', name:TROUBLE.name, c1:TROUBLE.c1, c2:TROUBLE.c2, fc:TROUBLE.fc, ec:TROUBLE.ec, trouble:true }; return; }
+  }
+  if (Math.random() < GOLD_RATE) sp.gold = true;
+};
+// 特殊角色畫法:重綁 drawTsum,疊在原繪之上(金環+✨/怒眉+獠牙)
+var _drawTsumBase = drawTsum;
+drawTsum = function(t, xx, yy, rr){
+  _drawTsumBase(t, xx, yy, rr);
+  var x = xx!==undefined?xx:t.x, y = yy!==undefined?yy:t.y, r = (rr!==undefined?rr:t.r) * (t.hi? 1.13:1);
+  if (t.gold){
+    ctx.save();
+    ctx.strokeStyle = '#f5c542'; ctx.lineWidth = Math.max(3, r*0.12);
+    ctx.beginPath(); ctx.arc(x, y, r*1.0, 0, 7); ctx.stroke();
+    ctx.fillStyle = '#f5c542'; ctx.font = 'bold ' + Math.max(12, r*0.5) + 'px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('✨', x, y - r*1.08);
+    ctx.restore();
+  }
+  if (t.t && t.t.trouble){
+    ctx.save();
+    ctx.strokeStyle = t.t.ec; ctx.lineWidth = Math.max(2, r*0.07); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x-r*0.3, y-r*0.26); ctx.lineTo(x-r*0.08, y-r*0.14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+r*0.3, y-r*0.26); ctx.lineTo(x+r*0.08, y-r*0.14); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(x-r*0.12, y+r*0.16); ctx.lineTo(x-r*0.05, y+r*0.32); ctx.lineTo(x+r*0.02, y+r*0.16); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x+r*0.12, y+r*0.16); ctx.lineTo(x+r*0.05, y+r*0.32); ctx.lineTo(x-r*0.02, y+r*0.16); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+};
+// 關卡地圖(蛇行 12 節點+星星+🔒+⏱;點過的關可重玩拿星)
+var mapBtns = [];
+function drawMap(t){
+  drawScene(t);
+  ctx.fillStyle = 'rgba(20,45,18,.86)'; ctx.fillRect(0,0,W,H);
+  var maxLv = maxLevel();
+  ctx.textAlign = 'center'; ctx.fillStyle = '#ffe9a8';
+  ctx.font = 'bold 40px "Microsoft JhengHei",sans-serif';
+  ctx.fillText('🗺 關卡地圖', W/2, 96);
+  ctx.font = '22px "Microsoft JhengHei",sans-serif'; ctx.fillStyle = '#dcf2c8';
+  ctx.fillText(M.label + '・已走到第 ' + maxLv + ' 關', W/2, 136);
+  ctx.fillStyle = '#c8e6b0'; ctx.font = '18px sans-serif';
+  ctx.fillText('點亮過的關可重玩拿星星・⏱=限時衝刺關', W/2, 172);
+  mapBtns = [];
+  var start = Math.max(1, maxLv - 7);
+  for (var i=0;i<12;i++){
+    var lv = start + i, row = (i/3)|0, col = i%3;
+    if (row % 2 === 1) col = 2 - col;
+    var nx = 110 + col*160, ny = 230 + row*128;
+    if (i > 0){
+      var pr = ((i-1)/3)|0, pc = (i-1)%3; if (pr % 2 === 1) pc = 2 - pc;
+      ctx.strokeStyle = 'rgba(255,235,150,.3)'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(110+pc*160, 230+pr*128); ctx.lineTo(nx, ny); ctx.stroke();
+    }
+    var unlocked = lv <= maxLv, cur = lv === maxLv, sp2 = isSprintLevel(lv), st2 = stars[lv]|0;
+    ctx.fillStyle = !unlocked ? 'rgba(255,255,255,.13)' : sp2 ? '#c9662a' : '#3f7d33';
+    ctx.beginPath(); ctx.arc(nx, ny, 40, 0, 7); ctx.fill();
+    if (cur){
+      ctx.strokeStyle = '#ffd54a'; ctx.lineWidth = 5 + 2*Math.sin(t*5);
+      ctx.beginPath(); ctx.arc(nx, ny, 47, 0, 7); ctx.stroke();
+    }
+    ctx.fillStyle = unlocked ? '#fff' : 'rgba(255,255,255,.55)';
+    ctx.font = 'bold 26px "Microsoft JhengHei",sans-serif';
+    ctx.fillText(unlocked ? String(lv) : '🔒', nx, ny + 9);
+    if (sp2){ ctx.font = '18px sans-serif'; ctx.fillText('⏱', nx, ny - 16); }
+    if (unlocked){
+      ctx.fillStyle = '#ffd54a'; ctx.font = '19px sans-serif';
+      ctx.fillText(st2 ? ('★★★').slice(0, st2) : (cur ? '▶' : ''), nx, ny + 66);
+      mapBtns.push({ x:nx-46, y:ny-46, w:92, h:92, lv:lv });
+    }
+  }
+  ctx.fillStyle = '#ffd54a'; roundRect(W/2-170, 792, 340, 64, 16); ctx.fill();
+  ctx.fillStyle = '#4a3510'; ctx.font = 'bold 26px "Microsoft JhengHei",sans-serif';
+  ctx.fillText('▶ 繼續:第 ' + maxLv + ' 關' + (isSprintLevel(maxLv) ? '(⏱限時)' : ''), W/2, 834);
+  mapBtns.push({ x:W/2-170, y:792, w:340, h:64, lv:maxLv });
+  ctx.fillStyle = 'rgba(255,255,255,.14)'; roundRect(W/2-170, 872, 340, 54, 14); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = '22px "Microsoft JhengHei",sans-serif';
+  ctx.fillText('← 換年齡檔', W/2, 907);
+  mapBtns.push({ x:W/2-170, y:872, w:340, h:54, lv:0 });
+}
+function mapTap(p){
+  for (var i=mapBtns.length-1;i>=0;i--){
+    var b = mapBtns[i];
+    if (p.x>b.x && p.x<b.x+b.w && p.y>b.y && p.y<b.y+b.h){
+      if (b.lv === 0){ scene = 'menu'; return; }
+      startGame(b.lv); return;
+    }
+  }
+}
 var level = 1, curTarget = M.target;   // 07-22 關卡制:第N關目標=基礎×(1+0.5×(N-1)),續關存本機
 
 // ---------- 版面 ----------
@@ -188,9 +315,11 @@ function onDown(e){
   var p = evPos(e);
   if (scene === 'menu'){ menuTap(p); return; }
   if (scene === 'win'){ winTap(p); return; }
+  if (scene === 'map'){ mapTap(p); return; }
   if (hudTap(p)) return;
   var t = hitTsum(p);
-  if (t){ dragging = true; curP = p; trail = [{x:t.x, y:t.y}]; chain = [t]; t.hi = 1; blip(440, 0.08, 'sine', 0.08); }
+  if (t){ dragging = true; curP = p; trail = [{x:t.x, y:t.y}]; if (t.t.trouble){ banner = { text:'😈 ' + TROUBLE.name + '!劃線要繞開牠!', t:1.2 }; blip(180, 0.15, 'square', 0.08); return; }
+    chain = [t]; t.hi = 1; blip(440, 0.08, 'sine', 0.08); }
 }
 function onMove(e){
   if (!dragging || scene!=='play') return;
@@ -205,7 +334,7 @@ function onMove(e){
   var prev = chain[chain.length-2];
   if (t === prev){ last.hi = 0; chain.pop(); blip(330,0.06,'sine',0.06); return; } // 回滑取消
   if (chain.indexOf(t) !== -1) return;
-  if (t.t !== last.t) return;
+  if (t.t !== chain[0].t && !t.t.trouble) return;   // 搗蛋鬼會混進任何鏈(要繞開牠劃)
   var dx = t.x-last.x, dy = t.y-last.y, lim = (t.r+last.r)*LINK_F;
   if (dx*dx+dy*dy > lim*lim) return;
   chain.push(t); t.hi = 1;
@@ -229,10 +358,25 @@ cv.addEventListener('touchstart', function(e){e.preventDefault();}, {passive:fal
 
 // ---------- 收鏈=收進罐裡(收集類:天上照樣降,收 n 補 n;不搞越收越多) ----------
 function collect(list){
+  // 07-22 三包:搗蛋鬼不算數還扣分(從鏈與場上剔除=落荒而逃);金色算雙倍;記最長鏈(星星用)
+  var troubles = 0, goldN = 0;
+  for (var gi=list.length-1; gi>=0; gi--){
+    if (list[gi].t.trouble){
+      troubles++;
+      var wi3 = tsums.indexOf(list[gi]);
+      if (wi3 !== -1){ tsums.splice(wi3,1); spawnQueue++; }
+      list.splice(gi,1);
+    } else if (list[gi].gold) goldN++;
+  }
+  if (list.length > bestChain) bestChain = list.length;
+  if (!list.length){
+    if (troubles > 0){ banner = { text:'😈 ' + TROUBLE.name + '溜走了!−' + (troubles*TROUBLE_PENALTY), t:1.4 }; fed = Math.max(0, fed - troubles*TROUBLE_PENALTY); }
+    return;
+  }
   var n = list.length;
   var mult = (n>=8?3 : n>=5?2 : 1) * (blessT>0?2:1);
   var portions = n * M.feed * mult;
-  fed = Math.min(curTarget, fed + portions);
+  fed = Math.max(0, (sprint ? fed + portions : Math.min(curTarget, fed + portions)) + goldN*mult - troubles*TROUBLE_PENALTY);
   chainCount++;
   hintT = 0; hintGroup = null;
   chordCollect(n);
@@ -244,14 +388,16 @@ function collect(list){
   for (i=0;i<10+n*2;i++) sparks.push({ x:list[0].x, y:list[0].y, vx:rnd(-3,3), vy:rnd(-4,1), life:1 });
   spawnQueue += n;                          // 收集類:收 n 補 n(天天降、天天收)
   banner = { text: n>=5 ? ('好大一把!收進 '+portions+' 份') : ('收進 '+portions+' 份口糧'), t:1.4 };
+  if (troubles > 0){ banner = { text:'😈 ' + TROUBLE.name + '混進來了!−' + (troubles*TROUBLE_PENALTY), t:1.6 }; blip(160, 0.2, 'square', 0.1); }
+  else if (goldN > 0){ banner = { text:'✨ 金色雙倍!多收 ' + (goldN*mult) + ' 份口糧', t:1.5 }; }
   if (chainCount >= nextBlessAt && blessT<=0){
     blessT = 8; nextBlessAt += (modeKey==='teen'?13:10);
     banner = { text:'✨ 第六天——收雙倍,預備安息日!', t:2.4 };
     blip(784,0.4,'triangle',0.12); blip(988,0.5,'triangle',0.1);
     if (!blessSpoken){ blessSpoken = true; speak('bless'); }
   }
-  if (fed >= curTarget && !won){
-    won = true; scene = 'win'; speak('win');
+  if (!sprint && fed >= curTarget && !won){
+    won = true; scene = 'win'; winT = 0; endLevelStars(); speak('win');
     if (!doneSent){ doneSent = true;
       if (window.__ping) window.__ping('manna-tsum-done', Math.round((Date.now()-startTime)/1000)); }
   }
@@ -466,19 +612,21 @@ function drawHUD(){
   ctx.fillStyle = '#7a5a28';
   ctx.fillRect(0,0,W,CROWD_TOP);
   ctx.fillStyle = '#fff'; ctx.font = 'bold 26px "Microsoft JhengHei",sans-serif'; ctx.textAlign='center';
-  ctx.fillText('已收 ' + Math.round(shownFed) + ' / ' + curTarget + ' 份口糧', W/2, 40);
+  if (sprint){ ctx.fillText('⏱ ' + Math.ceil(sprintT) + ' 秒・收 ' + Math.round(shownFed) + ' 份口糧', W/2, 40); }
+  else { ctx.fillText('已收 ' + Math.round(shownFed) + ' / ' + curTarget + ' 份口糧', W/2, 40); }
   // 返回大廳
   ctx.font = '20px sans-serif'; ctx.textAlign='left';
   ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText('← 大廳', 12, 38);
   ctx.textAlign='right';
   ctx.fillText(muted?'🔇':'🔊', W-14, 38);
   ctx.font = 'bold 16px "Microsoft JhengHei",sans-serif'; ctx.textAlign='left';
-  ctx.fillStyle = '#ffe9a8'; ctx.fillText('第'+level+'關', 12, 58);
+  ctx.fillStyle = '#ffe9a8'; ctx.fillText('第'+level+'關'+(sprint?'・⏱':''), 12, 58);
   ctx.textAlign='right'; ctx.fillText('同款連 '+M.minChain+' 顆', W-14, 58); ctx.textAlign='left';   // 門檻常駐(07-22 使用者回報看不到)
   // 進度條
   ctx.fillStyle = 'rgba(0,0,0,.3)'; roundRect(80, 48, W-160, 10, 5); ctx.fill();
   ctx.fillStyle = blessT>0 ? '#ffd54a' : '#e8cf8a';
-  var w = Math.max(10,(W-160)*Math.min(1, shownFed/curTarget));
+  if (sprint && sprintT < 11) ctx.fillStyle = '#e05a4a';   // 最後 10 秒轉紅
+  var w = Math.max(10,(W-160)*Math.min(1, sprint ? sprintT/(SPRINT_SECS[modeKey]||80) : shownFed/curTarget));
   roundRect(80, 48, w, 10, 5); ctx.fill();
 }
 function hudTap(p){
@@ -580,13 +728,17 @@ function menuTap(p){
     if (p.x>b.x && p.x<b.x+b.w && p.y>b.y && p.y<b.y+b.h){
       modeKey = b.key; M = MODES[modeKey];
       try{ localStorage.setItem('manna-mode', modeKey); }catch(e){}
-      startGame(); return;
+      loadStars(); scene = 'map'; return;
     }
   }
 }
-function startGame(){
-  try{ level = Math.max(1, parseInt(localStorage.getItem('manna-lvl-'+modeKey))||1); }catch(e){ level = 1; }
+function startGame(forceLv){
+  level = forceLv || maxLevel();
+  loadStars();
   curTarget = Math.round(M.target * (1 + (level-1)*0.5));
+  sprint = isSprintLevel(level);
+  sprintT = sprint ? (SPRINT_SECS[modeKey]||80) : 0;
+  bestChain = 0;
   tsums = []; chain = []; flying = []; sparks = [];
   fed = 0; shownFed = 0; chainCount = 0; won = false; blessT = 0; blessSpoken = false;
   nextBlessAt = modeKey==='young' ? 4 : 8;
@@ -595,7 +747,8 @@ function startGame(){
   var n = Math.min(CAP-6, Math.floor((W-20)/(2*M.r)) * 6);
   for (var i=0;i<n;i++) spawnTsum();
   scene = 'play'; playing = true; startTime = Date.now();
-  banner = { text: '劃線連起 ' + M.minChain + ' 顆同款!', t: 3 };   // 07-22:各檔連鏈門檻不同(青少年=4),開場講清楚
+    if (sprint){ banner = { text: '⏱ 限時衝刺!' + Math.round(SPRINT_SECS[modeKey]||80) + ' 秒內收越多越好!', t: 3 }; }
+  else banner = { text: '劃線連起 ' + M.minChain + ' 顆同款!', t: 3 };   // 07-22:各檔連鏈門檻不同(青少年=4),開場講清楚
   ac(); bgmStart(); speak('intro');
   if (window.__ping) window.__ping('manna-tsum-start');
 }
@@ -606,7 +759,9 @@ function drawWin(t){
   ctx.fillStyle = 'rgba(50,35,15,.88)'; ctx.fillRect(0,0,W,H);
   ctx.textAlign='center';
   ctx.fillStyle = '#ffe9a8'; ctx.font = 'bold 44px "Microsoft JhengHei",sans-serif';
-  ctx.fillText('🎉 各家的罐都收滿了!', W/2, 170);
+  ctx.fillText(sprint ? ('⏱ 時間到!共收 ' + fed + ' 份口糧') : '🎉 各家的罐都收滿了!', W/2, 170);
+  ctx.font = 'bold 42px sans-serif'; ctx.fillStyle = '#ffd54a';
+  ctx.fillText(('★★★').slice(0, lastStars) + ('☆☆☆').slice(0, 3-lastStars), W/2, 218);
   // 一排陶罐(俄梅珥量器)
   var bx0 = W/2 - 3.5*62, by = 262;
   for (i=0;i<8;i++){
@@ -629,7 +784,7 @@ function drawWin(t){
   ctx.fillText('留到早晨會生蟲變臭,學會天天倚靠祂。', W/2, 638);
   winBtns = [];
   var nextT = Math.round(M.target * (1 + level*0.5));
-  var items = [['⭐ 下一關(目標 '+nextT+')','next'],['🔊 再聽經文','listen'],['再玩一次','again'],['← 回大廳','lobby']];
+  var items = [[(isSprintLevel(level+1) ? '⏱ 下一關(限時衝刺)' : '⭐ 下一關(目標 '+nextT+')'),'next'],['🔊 再聽經文','listen'],['🗺 關卡地圖','again'],['← 回大廳','lobby']];
   for (i=0;i<items.length;i++){
     var y = 652 + i*76;
     ctx.fillStyle = 'rgba(255,255,255,.15)'; roundRect(W/2-160, y, 320, 66, 16); ctx.fill();
@@ -642,9 +797,9 @@ function winTap(p){
   for (var i=0;i<winBtns.length;i++){
     var b = winBtns[i];
     if (p.x>b.x && p.x<b.x+b.w && p.y>b.y && p.y<b.y+b.h){
-      if (b.act==='next'){ try{ localStorage.setItem('manna-lvl-'+modeKey, ''+(level+1)); }catch(e){} startGame(); return; }
+      if (b.act==='next'){ var nx = level+1; try{ localStorage.setItem('manna-lvl-'+modeKey, ''+Math.max(maxLevel(), nx)); }catch(e){} startGame(nx); return; }
       if (b.act==='listen') speak('win');
-      else if (b.act==='again') scene = 'menu';
+      else if (b.act==='again'){ loadStars(); scene = 'map'; }
       else location.href = 'https://hfpc-bible-games.summer09201017.workers.dev/';
       return;
     }
@@ -658,8 +813,13 @@ function loop(ms){
   var t = ms/1000, dt = Math.min(0.05, t-last); last = t;
   if (scene === 'menu'){ drawMenu(t); return; }
   if (scene === 'win'){ winT += dt; drawWin(winT); return; }
+  if (scene === 'map'){ drawMap(t); return; }
   // play
   if (blessT > 0) blessT -= dt;
+  if (sprint && !won && scene === 'play'){
+    sprintT -= dt;
+    if (sprintT <= 0){ sprintT = 0; sprintEnd(); }
+  }
   spawnTick -= dt;
   if (spawnQueue > 0 && spawnTick <= 0 && tsums.length < CAP){
     spawnTsum(); spawnQueue--; spawnTick = 0.12;
@@ -669,6 +829,16 @@ function loop(ms){
   hintT += dt; checkT += dt;
   if (checkT >= 1){
     checkT = 0; dbgChecks++;
+    for (var wi2=tsums.length-1; wi2>=0; wi2--){
+      var wt2 = tsums[wi2];
+      if (wt2.t.trouble && chain.indexOf(wt2) === -1){
+        wt2.tAge = (wt2.tAge||0) + 1;
+        if (wt2.tAge >= 15){   // 搗蛋鬼待 15 秒自己走,不佔場
+          for (var sp3=0;sp3<6;sp3++) sparks.push({ x:wt2.x, y:wt2.y, vx:rnd(-2,2), vy:rnd(-3,0), life:1 });
+          tsums.splice(wi2,1); spawnQueue++;
+        }
+      }
+    }
     if (hintGroup){
       // 07-22:除了「還在場上」也驗「仍彼此可連」——物理擠散的過期提示要放掉,救援才會再補
       for (var hi=0;hi<hintGroup.length;hi++){
@@ -733,7 +903,7 @@ requestAnimationFrame(loop);
 // ---------- 測試鉤子(?test=1 才掛;Playwright 驗證用,不影響玩家) ----------
 if (location.search.indexOf('test=1') !== -1){
   window.__tsum = {
-    state: function(){ return { scene:scene, fed:fed, n:tsums.length, queue:spawnQueue, chains:chainCount, mode:modeKey, dragging:dragging, hint:!!hintGroup, checks:dbgChecks, rescues:dbgRescues, chainLen:chain.length, level:level }; },
+    state: function(){ return { scene:scene, sprint:sprint, sprintT:Math.round(sprintT), lastStars:lastStars, bestChain:bestChain, golds:tsums.filter(function(x){return !!x.gold;}).length, troubles:tsums.filter(function(x){return !!x.t.trouble;}).length, fed:fed, n:tsums.length, queue:spawnQueue, chains:chainCount, mode:modeKey, dragging:dragging, hint:!!hintGroup, checks:dbgChecks, rescues:dbgRescues, chainLen:chain.length, level:level }; },
     deadlock: function(){
       // 重現 07-22 死局:場滿 CAP+隊列>0+全場無同款相鄰(每顆給獨一無二的假型別)
       while (tsums.length < CAP) spawnTsum();
@@ -757,6 +927,8 @@ if (location.search.indexOf('test=1') !== -1){
       return { y: FLOOR - tsums[0].r, xs: tsums.slice(0,n).map(function(c){return c.x;}) };
     },
     start: function(k){ if(k && MODES[k]){ modeKey=k; M=MODES[k]; } startGame(); },
+    startLv: function(k, lv){ if (k && MODES[k]){ modeKey = k; M = MODES[k]; } startGame(lv || 1); },
+    sprintLeft: function(sec){ sprintT = sec; },
     autoChain: function(){
       // BFS 找一組同款相鄰 >= minChain,走正式 collect 路徑
       for (var i=0;i<tsums.length;i++){
