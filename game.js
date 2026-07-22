@@ -50,6 +50,25 @@ var LINK_F = 1.12;   // 連結判定=半徑和×此倍率。落定接觸≈1.0;1
 MODES.teen.cap = 100; MODES.kid.cap = 70; MODES.young.cap = 46;
 MODES.teen.r = Math.round(MODES.teen.r * 0.85);
 MODES.kid.r  = Math.round(MODES.kid.r  * 0.9);
+// 07-22 手機版(使用者點名):角色加大比較好看好連,顆數對應下調;⛶ 全螢幕鈕
+var IS_MOBILE = (function(){
+  try{ return matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 500; }catch(e){ return false; }
+})();
+if (IS_MOBILE){
+  MODES.teen.r = Math.round(MODES.teen.r * 1.2);  MODES.teen.cap = 70;
+  MODES.kid.r  = Math.round(MODES.kid.r  * 1.2);  MODES.kid.cap  = 48;
+  MODES.young.r = Math.round(MODES.young.r * 1.15); MODES.young.cap = 35;
+}
+var canFS = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+function toggleFS(){
+  try{
+    var d = document, el = d.documentElement;
+    if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+  }catch(e){}
+}
+addEventListener('fullscreenchange', function(){ fit(); });
+addEventListener('webkitfullscreenchange', function(){ fit(); });
 // 07-22 爆收大招(反向化:不是炸掉,是一次收一大片):長鏈獎勵生成,點一下範圍全收
 var BURST = { icon:'🌟', name:'天降恩典', banner:'🌟 恩典滿滿!一次收進一大片!' };
 var burstPending = false, burstNow = false, chainsSinceBurst = 0;
@@ -666,6 +685,7 @@ function drawHUD(){
   ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillText('← 大廳', 12, 38);
   ctx.textAlign='right';
   ctx.fillText(muted?'🔇':'🔊', W-14, 38);
+  if (canFS) ctx.fillText(document.fullscreenElement||document.webkitFullscreenElement?'🡼':'⛶', W-60, 38);
   ctx.font = 'bold 16px "Microsoft JhengHei",sans-serif'; ctx.textAlign='left';
   ctx.fillStyle = '#ffe9a8'; ctx.fillText('第'+level+'關'+(sprint?'・⏱':''), 12, 58);
   ctx.textAlign='right'; ctx.fillText('同款連 '+M.minChain+' 顆', W-14, 58); ctx.textAlign='left';   // 門檻常駐(07-22 使用者回報看不到)
@@ -679,7 +699,8 @@ function drawHUD(){
 function hudTap(p){
   if (p.y < CROWD_TOP){
     if (p.x < 100){ location.href = 'https://hfpc-bible-games.summer09201017.workers.dev/'; return true; }
-    if (p.x > W-100){ muted = !muted; try{ localStorage.setItem('manna-mute', muted?'1':'0'); }catch(e){} return true; }
+    if (p.x > W-118 && p.x <= W-56){ if (canFS) toggleFS(); return true; }
+    if (p.x > W-56){ muted = !muted; try{ localStorage.setItem('manna-mute', muted?'1':'0'); }catch(e){} return true; }
   }
   return false;
 }
@@ -954,7 +975,7 @@ requestAnimationFrame(loop);
 // ---------- 測試鉤子(?test=1 才掛;Playwright 驗證用,不影響玩家) ----------
 if (location.search.indexOf('test=1') !== -1){
   window.__tsum = {
-    state: function(){ return { scene:scene, sprint:sprint, sprintT:Math.round(sprintT), lastStars:lastStars, bestChain:bestChain, golds:tsums.filter(function(x){return !!x.gold;}).length, bursts:tsums.filter(function(x){return !!x.burst;}).length, cap:CAP, troubles:tsums.filter(function(x){return !!x.t.trouble;}).length, fed:fed, n:tsums.length, queue:spawnQueue, chains:chainCount, mode:modeKey, dragging:dragging, hint:!!hintGroup, checks:dbgChecks, rescues:dbgRescues, chainLen:chain.length, level:level }; },
+    state: function(){ return { scene:scene, sprint:sprint, sprintT:Math.round(sprintT), lastStars:lastStars, bestChain:bestChain, golds:tsums.filter(function(x){return !!x.gold;}).length, bursts:tsums.filter(function(x){return !!x.burst;}).length, cap:CAP, mobile:IS_MOBILE, r:M.r, fsBtn:canFS, troubles:tsums.filter(function(x){return !!x.t.trouble;}).length, fed:fed, n:tsums.length, queue:spawnQueue, chains:chainCount, mode:modeKey, dragging:dragging, hint:!!hintGroup, checks:dbgChecks, rescues:dbgRescues, chainLen:chain.length, level:level }; },
     deadlock: function(){
       // 重現 07-22 死局:場滿 CAP+隊列>0+全場無同款相鄰(每顆給獨一無二的假型別)
       while (tsums.length < CAP) spawnTsum();
