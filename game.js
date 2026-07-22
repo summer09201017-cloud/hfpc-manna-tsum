@@ -46,6 +46,28 @@ var M = MODES[modeKey];
 var LINK_F = 1.12;   // 連結判定=半徑和×此倍率。落定接觸≈1.0;1.35 會把隔著空隙的兩顆判成相鄰(隔空相消)
 
 // ---------- 07-22 三包:限時衝刺關/關卡地圖(星星)/特殊角色(金色雙倍+搗蛋鬼) ----------
+// 07-22 分齡加量:teen 100 顆(r×0.85)/kid 70 顆(r×0.9)/young 維持 46(幼幼要大顆好按)
+MODES.teen.cap = 100; MODES.kid.cap = 70; MODES.young.cap = 46;
+MODES.teen.r = Math.round(MODES.teen.r * 0.85);
+MODES.kid.r  = Math.round(MODES.kid.r  * 0.9);
+// 07-22 爆收大招(反向化:不是炸掉,是一次收一大片):長鏈獎勵生成,點一下範圍全收
+var BURST = { icon:'🌟', name:'天降恩典', banner:'🌟 恩典滿滿!一次收進一大片!' };
+var burstPending = false, burstNow = false;
+function triggerBurst(bt){
+  var R = M.r * 3.0, list = [], i;
+  for (i=tsums.length-1; i>=0; i--){
+    var c = tsums[i], dx = c.x-bt.x, dy = c.y-bt.y;
+    if (dx*dx+dy*dy > R*R) continue;
+    if (c.t.trouble){ tsums.splice(i,1); spawnQueue++; continue; }   // 搗蛋鬼被大招嚇跑(不扣分)
+    list.push(c);
+  }
+  for (i=0;i<24;i++) sparks.push({ x:bt.x, y:bt.y, vx:rnd(-4,4), vy:rnd(-5,1), life:1 });
+  blip(523,0.3,'triangle',0.12); blip(659,0.35,'triangle',0.1); blip(784,0.45,'triangle',0.1);
+  burstNow = true;
+  collect(list);
+  burstNow = false;
+  banner = { text: BURST.banner, t: 1.8 };
+}
 var SPRINT_EVERY = 3;                                  // 每第 3、6、9…關=限時衝刺關
 var SPRINT_SECS = { young:90, kid:80, teen:70 };
 var GOLD_RATE = 0.07, TROUBLE_RATE = 0.05, TROUBLE_PENALTY = 3;
@@ -79,6 +101,14 @@ spawnTsum = function(){
   var sp = tsums[tsums.length-1];
   if (!sp) return;
   if (sp.t && sp.t.trouble){ var ts0 = activeTypes(); sp.t = ts0[(Math.random()*ts0.length)|0]; }
+  if (burstPending && !sp.t.trouble && !sp.t.wild){
+    var hasB = false;
+    for (var bi=0;bi<tsums.length-1;bi++) if (tsums[bi].burst){ hasB = true; break; }
+    if (!hasB){
+      sp.burst = true; burstPending = false;
+      banner = { text:'✨ 出現「' + BURST.name + '」!點它一下!', t:2.2 };
+    }
+  }
   if (!playing || level < 2) return;
   if (sp.t.wild) return;
   if (modeKey !== 'young' && Math.random() < TROUBLE_RATE){
@@ -99,6 +129,15 @@ drawTsum = function(t, xx, yy, rr){
     ctx.beginPath(); ctx.arc(x, y, r*1.0, 0, 7); ctx.stroke();
     ctx.fillStyle = '#f5c542'; ctx.font = 'bold ' + Math.max(12, r*0.5) + 'px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('✨', x, y - r*1.08);
+    ctx.restore();
+  }
+  if (t.burst){
+    var pu = 0.5 + 0.5*Math.sin(Date.now()/140);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,200,60,' + (0.5+0.4*pu).toFixed(2) + ')'; ctx.lineWidth = Math.max(4, r*0.16);
+    ctx.beginPath(); ctx.arc(x, y, r*(1.06+0.08*pu), 0, 7); ctx.stroke();
+    ctx.font = 'bold ' + Math.max(16, r*0.9) + 'px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(BURST.icon, x, y - r*1.15);
     ctx.restore();
   }
   if (t.t && t.t.trouble){
@@ -318,7 +357,8 @@ function onDown(e){
   if (scene === 'map'){ mapTap(p); return; }
   if (hudTap(p)) return;
   var t = hitTsum(p);
-  if (t){ dragging = true; curP = p; trail = [{x:t.x, y:t.y}]; if (t.t.trouble){ banner = { text:'😈 ' + TROUBLE.name + '!劃線要繞開牠!', t:1.2 }; blip(180, 0.15, 'square', 0.08); return; }
+  if (t){ dragging = true; curP = p; trail = [{x:t.x, y:t.y}]; if (t.burst){ if (Math.abs(t.y - t.py) < 1.5) triggerBurst(t); return; }   // 落定才能觸發(掉落中點不到東西)
+    if (t.t.trouble){ banner = { text:'😈 ' + TROUBLE.name + '!劃線要繞開牠!', t:1.2 }; blip(180, 0.15, 'square', 0.08); return; }
     chain = [t]; t.hi = 1; blip(440, 0.08, 'sine', 0.08); }
 }
 function onMove(e){
@@ -333,6 +373,7 @@ function onMove(e){
   if (t === last) return;
   var prev = chain[chain.length-2];
   if (t === prev){ last.hi = 0; chain.pop(); blip(330,0.06,'sine',0.06); return; } // 回滑取消
+  if (t.burst) return;   // 大招球用點的,不入鏈
   if (chain.indexOf(t) !== -1) return;
   if (t.t !== chain[0].t && !t.t.trouble) return;   // 搗蛋鬼會混進任何鏈(要繞開牠劃)
   var dx = t.x-last.x, dy = t.y-last.y, lim = (t.r+last.r)*LINK_F;
@@ -368,7 +409,8 @@ function collect(list){
       list.splice(gi,1);
     } else if (list[gi].gold) goldN++;
   }
-  if (list.length > bestChain) bestChain = list.length;
+  if (!burstNow && list.length > bestChain) bestChain = list.length;
+  if (!burstNow && list.length >= M.minChain + 3) burstPending = true;   // 長鏈獎勵:下一顆生成爆收大招
   if (!list.length){
     if (troubles > 0){ banner = { text:'😈 ' + TROUBLE.name + '溜走了!−' + (troubles*TROUBLE_PENALTY), t:1.4 }; fed = Math.max(0, fed - troubles*TROUBLE_PENALTY); }
     return;
@@ -739,12 +781,15 @@ function startGame(forceLv){
   sprint = isSprintLevel(level);
   sprintT = sprint ? (SPRINT_SECS[modeKey]||80) : 0;
   bestChain = 0;
+  CAP = M.cap || 46;
+  burstPending = false;
   tsums = []; chain = []; flying = []; sparks = [];
   fed = 0; shownFed = 0; chainCount = 0; won = false; blessT = 0; blessSpoken = false;
   nextBlessAt = modeKey==='young' ? 4 : 8;
   spawnQueue = 0; doneSent = false;
   hintT = 0; checkT = 0; hintGroup = null;
   var n = Math.min(CAP-6, Math.floor((W-20)/(2*M.r)) * 6);
+  spawnQueue += Math.max(0, (CAP-6) - n);   // 07-22 分齡加量:超出首鋪的用雨降補滿(避免同帶疊爆)
   for (var i=0;i<n;i++) spawnTsum();
   scene = 'play'; playing = true; startTime = Date.now();
     if (sprint){ banner = { text: '⏱ 限時衝刺!' + Math.round(SPRINT_SECS[modeKey]||80) + ' 秒內收越多越好!', t: 3 }; }
@@ -903,7 +948,7 @@ requestAnimationFrame(loop);
 // ---------- 測試鉤子(?test=1 才掛;Playwright 驗證用,不影響玩家) ----------
 if (location.search.indexOf('test=1') !== -1){
   window.__tsum = {
-    state: function(){ return { scene:scene, sprint:sprint, sprintT:Math.round(sprintT), lastStars:lastStars, bestChain:bestChain, golds:tsums.filter(function(x){return !!x.gold;}).length, troubles:tsums.filter(function(x){return !!x.t.trouble;}).length, fed:fed, n:tsums.length, queue:spawnQueue, chains:chainCount, mode:modeKey, dragging:dragging, hint:!!hintGroup, checks:dbgChecks, rescues:dbgRescues, chainLen:chain.length, level:level }; },
+    state: function(){ return { scene:scene, sprint:sprint, sprintT:Math.round(sprintT), lastStars:lastStars, bestChain:bestChain, golds:tsums.filter(function(x){return !!x.gold;}).length, bursts:tsums.filter(function(x){return !!x.burst;}).length, cap:CAP, troubles:tsums.filter(function(x){return !!x.t.trouble;}).length, fed:fed, n:tsums.length, queue:spawnQueue, chains:chainCount, mode:modeKey, dragging:dragging, hint:!!hintGroup, checks:dbgChecks, rescues:dbgRescues, chainLen:chain.length, level:level }; },
     deadlock: function(){
       // 重現 07-22 死局:場滿 CAP+隊列>0+全場無同款相鄰(每顆給獨一無二的假型別)
       while (tsums.length < CAP) spawnTsum();
@@ -929,6 +974,8 @@ if (location.search.indexOf('test=1') !== -1){
     start: function(k){ if(k && MODES[k]){ modeKey=k; M=MODES[k]; } startGame(); },
     startLv: function(k, lv){ if (k && MODES[k]){ modeKey = k; M = MODES[k]; } startGame(lv || 1); },
     sprintLeft: function(sec){ sprintT = sec; },
+    forceBurst: function(){ burstPending = true; },
+    burstPos: function(){ for (var i=0;i<tsums.length;i++) if (tsums[i].burst) return { x:tsums[i].x, y:tsums[i].y }; return null; },
     autoChain: function(){
       // BFS 找一組同款相鄰 >= minChain,走正式 collect 路徑
       for (var i=0;i<tsums.length;i++){
