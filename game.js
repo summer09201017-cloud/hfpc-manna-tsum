@@ -52,7 +52,7 @@ MODES.teen.r = Math.round(MODES.teen.r * 0.85);
 MODES.kid.r  = Math.round(MODES.kid.r  * 0.9);
 // 07-22 爆收大招(反向化:不是炸掉,是一次收一大片):長鏈獎勵生成,點一下範圍全收
 var BURST = { icon:'🌟', name:'天降恩典', banner:'🌟 恩典滿滿!一次收進一大片!' };
-var burstPending = false, burstNow = false;
+var burstPending = false, burstNow = false, chainsSinceBurst = 0;
 function triggerBurst(bt){
   var R = M.r * 3.0, list = [], i;
   for (i=tsums.length-1; i>=0; i--){
@@ -410,7 +410,11 @@ function collect(list){
     } else if (list[gi].gold) goldN++;
   }
   if (!burstNow && list.length > bestChain) bestChain = list.length;
-  if (!burstNow && list.length >= M.minChain + 3) burstPending = true;   // 長鏈獎勵:下一顆生成爆收大招
+  if (!burstNow && !burstPending){
+    chainsSinceBurst++;
+    // 雙路徑:技巧捷徑(門檻+2 一鏈直達)或保底(每收 7 鏈必來)——minChain+3 實測幾乎不可達
+    if (list.length >= M.minChain + 2 || chainsSinceBurst >= 7){ burstPending = true; chainsSinceBurst = 0; }
+  }
   if (!list.length){
     if (troubles > 0){ banner = { text:'😈 ' + TROUBLE.name + '溜走了!−' + (troubles*TROUBLE_PENALTY), t:1.4 }; fed = Math.max(0, fed - troubles*TROUBLE_PENALTY); }
     return;
@@ -432,6 +436,7 @@ function collect(list){
   banner = { text: n>=5 ? ('好大一把!收進 '+portions+' 份') : ('收進 '+portions+' 份口糧'), t:1.4 };
   if (troubles > 0){ banner = { text:'😈 ' + TROUBLE.name + '混進來了!−' + (troubles*TROUBLE_PENALTY), t:1.6 }; blip(160, 0.2, 'square', 0.1); }
   else if (goldN > 0){ banner = { text:'✨ 金色雙倍!多收 ' + (goldN*mult) + ' 份口糧', t:1.5 }; }
+  else if (chainsSinceBurst === 5 && !burstPending){ banner = { text:'再收 2 鏈,「' + BURST.name + '」就來!', t:1.6 }; }
   if (chainCount >= nextBlessAt && blessT<=0){
     blessT = 8; nextBlessAt += (modeKey==='teen'?13:10);
     banner = { text:'✨ 第六天——收雙倍,預備安息日!', t:2.4 };
@@ -783,6 +788,7 @@ function startGame(forceLv){
   bestChain = 0;
   CAP = M.cap || 46;
   burstPending = false;
+  chainsSinceBurst = 0;
   tsums = []; chain = []; flying = []; sparks = [];
   fed = 0; shownFed = 0; chainCount = 0; won = false; blessT = 0; blessSpoken = false;
   nextBlessAt = modeKey==='young' ? 4 : 8;
