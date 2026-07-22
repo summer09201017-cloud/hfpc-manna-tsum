@@ -72,15 +72,17 @@ addEventListener('webkitfullscreenchange', function(){ fit(); });
 // 07-22 爆收大招(反向化:不是炸掉,是一次收一大片):長鏈獎勵生成,點一下範圍全收
 var BURST = { icon:'🌟', name:'天降恩典', banner:'🌟 恩典滿滿!一次收進一大片!' };
 var burstPending = false, burstNow = false, chainsSinceBurst = 0;
+var burstFx = null;   // 爆收衝擊波(擴散光環,讓範圍看得見)
 function triggerBurst(bt){
-  var R = M.r * 3.0, list = [], i;
+  var R = M.r * 4.5, list = [], i;
   for (i=tsums.length-1; i>=0; i--){
     var c = tsums[i], dx = c.x-bt.x, dy = c.y-bt.y;
     if (dx*dx+dy*dy > R*R) continue;
     if (c.t.trouble){ tsums.splice(i,1); spawnQueue++; continue; }   // 搗蛋鬼被大招嚇跑(不扣分)
     list.push(c);
   }
-  for (i=0;i<24;i++) sparks.push({ x:bt.x, y:bt.y, vx:rnd(-4,4), vy:rnd(-5,1), life:1 });
+  for (i=0;i<40;i++) sparks.push({ x:bt.x, y:bt.y, vx:rnd(-7,7), vy:rnd(-8,2), life:1 });
+  burstFx = { x:bt.x, y:bt.y, R:R, t:0 };
   blip(523,0.3,'triangle',0.12); blip(659,0.35,'triangle',0.1); blip(784,0.45,'triangle',0.1);
   burstNow = true;
   collect(list);
@@ -950,6 +952,15 @@ function loop(ms){
     if (f.p >= 1){ flying.splice(i,1); continue; }
     var e = 1-(1-f.p)*(1-f.p);
     drawTsum({t:f.t,hi:0}, f.x+(f.tx-f.x)*e, f.y+(f.ty-f.y)*e - Math.sin(e*Math.PI)*80, f.r*(1-e*0.5));
+  }
+  if (burstFx){
+    burstFx.t += dt*2.2;
+    if (burstFx.t >= 1) burstFx = null;
+    else {
+      ctx.strokeStyle = 'rgba(255,220,90,' + (0.85*(1-burstFx.t)).toFixed(2) + ')';
+      ctx.lineWidth = 10 + 26*burstFx.t;
+      ctx.beginPath(); ctx.arc(burstFx.x, burstFx.y, burstFx.R*(0.25 + 0.75*burstFx.t), 0, 7); ctx.stroke();
+    }
   }
   for (i=sparks.length-1;i>=0;i--){
     var s = sparks[i]; s.life -= dt*1.6; s.x += s.vx; s.y += s.vy; s.vy += 0.15;
