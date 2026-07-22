@@ -43,6 +43,7 @@ var modeKey = 'kid';
 try{ modeKey = localStorage.getItem('manna-mode') || 'kid'; }catch(e){}
 if(!MODES[modeKey]) modeKey = 'kid';
 var M = MODES[modeKey];
+var LINK_F = 1.12;   // 連結判定=半徑和×此倍率。落定接觸≈1.0;1.35 會把隔著空隙的兩顆判成相鄰(隔空相消)
 var level = 1, curTarget = M.target;   // 07-22 關卡制:第N關目標=基礎×(1+0.5×(N-1)),續關存本機
 
 // ---------- 版面 ----------
@@ -205,7 +206,7 @@ function onMove(e){
   if (t === prev){ last.hi = 0; chain.pop(); blip(330,0.06,'sine',0.06); return; } // 回滑取消
   if (chain.indexOf(t) !== -1) return;
   if (t.t !== last.t) return;
-  var dx = t.x-last.x, dy = t.y-last.y, lim = (t.r+last.r)*1.35;
+  var dx = t.x-last.x, dy = t.y-last.y, lim = (t.r+last.r)*LINK_F;
   if (dx*dx+dy*dy > lim*lim) return;
   chain.push(t); t.hi = 1;
   blip(440*Math.pow(2, Math.min(chain.length,12)/12), 0.08, 'sine', 0.09);
@@ -216,6 +217,7 @@ function onUp(e){
   dragging = false; curP = null;
   var n = chain.length;
   if (n >= M.minChain) collect(chain.slice());
+  else if (n >= 2){ banner = { text:'要連滿 '+M.minChain+' 顆同款!(還差 '+(M.minChain-n)+' 顆)', t:1.4 }; blip(220,0.08,'sine',0.06); }   // 07-22:連不夠不再默默沒反應
   for (var i=0;i<chain.length;i++) chain[i].hi = 0;
   chain = [];
 }
@@ -267,7 +269,7 @@ function findGroup(){
         var c = tsums[j];
         if (seen.indexOf(c) !== -1 || c.t !== seed.t) continue;
         var lastT = group[group.length-1];
-        var dx=c.x-lastT.x, dy=c.y-lastT.y, lim=(c.r+lastT.r)*1.35;
+        var dx=c.x-lastT.x, dy=c.y-lastT.y, lim=(c.r+lastT.r)*LINK_F;
         if (dx*dx+dy*dy <= lim*lim){ group.push(c); seen.push(c); grow = true; break; }
       }
     }
@@ -293,7 +295,7 @@ function rescue(){
       if (d2 < bd){ bd = d2; best = c; }
     }
     if (!best) break;
-    var lim = (best.r+prev.r)*1.2;
+    var lim = (best.r+prev.r)*LINK_F;
     if (bd > lim*lim){
       // 稀疏場才輕移貼齊 prev(順著原方向,不闖進堆中心)
       var ang = Math.atan2(best.y-prev.y, best.x-prev.x);
@@ -472,6 +474,7 @@ function drawHUD(){
   ctx.fillText(muted?'🔇':'🔊', W-14, 38);
   ctx.font = 'bold 16px "Microsoft JhengHei",sans-serif'; ctx.textAlign='left';
   ctx.fillStyle = '#ffe9a8'; ctx.fillText('第'+level+'關', 12, 58);
+  ctx.textAlign='right'; ctx.fillText('同款連 '+M.minChain+' 顆', W-14, 58); ctx.textAlign='left';   // 門檻常駐(07-22 使用者回報看不到)
   // 進度條
   ctx.fillStyle = 'rgba(0,0,0,.3)'; roundRect(80, 48, W-160, 10, 5); ctx.fill();
   ctx.fillStyle = blessT>0 ? '#ffd54a' : '#e8cf8a';
@@ -480,7 +483,7 @@ function drawHUD(){
 }
 function hudTap(p){
   if (p.y < CROWD_TOP){
-    if (p.x < 100){ location.href = 'https://hfpc-bible-games.netlify.app/'; return true; }
+    if (p.x < 100){ location.href = 'https://hfpc-bible-games.summer09201017.workers.dev/'; return true; }
     if (p.x > W-100){ muted = !muted; try{ localStorage.setItem('manna-mute', muted?'1':'0'); }catch(e){} return true; }
   }
   return false;
@@ -642,7 +645,7 @@ function winTap(p){
       if (b.act==='next'){ try{ localStorage.setItem('manna-lvl-'+modeKey, ''+(level+1)); }catch(e){} startGame(); return; }
       if (b.act==='listen') speak('win');
       else if (b.act==='again') scene = 'menu';
-      else location.href = 'https://hfpc-bible-games.netlify.app/';
+      else location.href = 'https://hfpc-bible-games.summer09201017.workers.dev/';
       return;
     }
   }
@@ -671,7 +674,7 @@ function loop(ms){
       for (var hi=0;hi<hintGroup.length;hi++){
         var bad = tsums.indexOf(hintGroup[hi])===-1;
         if (!bad && hi>0){
-          var A=hintGroup[hi-1], B=hintGroup[hi], hdx=B.x-A.x, hdy=B.y-A.y, hlim=(A.r+B.r)*1.35;
+          var A=hintGroup[hi-1], B=hintGroup[hi], hdx=B.x-A.x, hdy=B.y-A.y, hlim=(A.r+B.r)*LINK_F;
           bad = hdx*hdx+hdy*hdy > hlim*hlim;
         }
         if (bad){ hintGroup=null; break; }
@@ -765,7 +768,7 @@ if (location.search.indexOf('test=1') !== -1){
             var c = tsums[j];
             if (seen.indexOf(c) !== -1 || c.t !== seed.t) continue;
             var lastT = group[group.length-1];
-            var dx=c.x-lastT.x, dy=c.y-lastT.y, lim=(c.r+lastT.r)*1.35;
+            var dx=c.x-lastT.x, dy=c.y-lastT.y, lim=(c.r+lastT.r)*LINK_F;
             if (dx*dx+dy*dy <= lim*lim){ group.push(c); seen.push(c); grow = true; break; }
           }
         }
