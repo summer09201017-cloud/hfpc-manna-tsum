@@ -34,6 +34,15 @@
     try{ last = +localStorage.getItem(k) || 0; }catch(e){}
     if (now - last > 10*60*1000){ window.__ping('manna-tsum'); try{ localStorage.setItem(k, ''+now); }catch(e){} }
   }catch(e){}
+  // 真實停留:開頁→第一次離開(切走/鎖屏/關閉)回報一發,Worker 記平均+最近一次(-dwell)
+  var _dwT0 = Date.now(), _dwSent = false;
+  function _dwLeave(){
+    if (_dwSent) return; _dwSent = true;
+    var sec = Math.round((Date.now() - _dwT0) / 1000);
+    if (sec >= 3 && sec <= 1800) window.__ping('manna-tsum-dwell', sec);
+  }
+  addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden') _dwLeave(); });
+  addEventListener('pagehide', _dwLeave);
 })();
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
