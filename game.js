@@ -281,6 +281,25 @@ function chordCollect(n){
   });
 }
 // 清晨曠野 BGM:兩軌八小節循環(每關不同曲——與五餅二魚不同旋律)
+
+// ★ BGM 百曲庫 0726:曲子由(站名,關卡)雜湊決定——每站不同首、每關不同曲、同一關永遠同一首。
+var MELW = 'triangle', MELVOL = 0.35, MELSTEP = 240;
+function bgmSeed(lv){
+  var SC = [[523.25,587.33,659.25,783.99,880],[440,523.25,587.33,659.25,783.99],[392,440,493.88,587.33,659.25],[349.23,392,440,523.25,587.33],[587.33,659.25,739.99,880,987.77],[329.63,392,440,493.88,587.33],[466.16,523.25,587.33,698.46,783.99],[415.3,466.16,554.37,622.25,739.99]];
+  var PT = [[0,1,2,3,4,3,2,1],[0,2,4,2,1,3,2,0],[4,3,2,1,0,1,2,3],[0,0,2,2,4,4,2,-1],[0,2,1,3,2,4,3,-1],[4,2,0,2,4,2,1,0],[0,3,1,4,2,0,3,-1],[2,4,2,0,1,3,4,2]];
+  var x = 2166136261, s = 'manna-tsum|' + (lv || 1);
+  for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0 }
+  var mul = [1, 1.122, 0.891][(x >>> 13) % 3];
+  var sc = SC[x % 8].map(function (f) { return f * mul });
+  var p = PT[(x >>> 3) % 8].concat(PT[(x >>> 6) % 8]);
+  MELO = p.map(function (i) { return i < 0 ? 0 : sc[i] });
+  BASS = [0,0,3,3,4,4,3,3,0,0,3,3,4,4,0,0].map(function (i) { return sc[i] / 2 });
+  MELW = ['triangle', 'square', 'sine'][(x >>> 11) % 3];
+  MELVOL = MELW === 'square' ? 0.22 : MELW === 'sine' ? 0.45 : 0.35;
+  MELSTEP = [190, 220, 250, 290][(x >>> 9) % 4];
+  if (bgmTimer) { clearInterval(bgmTimer); bgmTimer = setInterval(bgmTick, MELSTEP) }
+  bgmStep = 0;
+}
 var bgmTimer = null, bgmStep = 0;
 var MELO = [392,440,523,587, 523,440,392,330, 392,523,587,659, 587,523,440,392];
 var BASS = [98,98,131,131, 147,147,131,131, 98,98,131,131, 165,165,98,98];
@@ -290,9 +309,10 @@ function bgmTick(){
   //   但玩家一開遊戲看到的就是選單,於是回報「沒有背景音樂」。現在選單/地圖也播。
   var i = bgmStep % 16;
   blip(BASS[i], 0.24, 'sine', 0.02);
-  if (bgmStep % 2 === 0) blip(MELO[(bgmStep/2)%16|0], 0.2, 'triangle', 0.35);
+  if (bgmStep % 2 === 0) { var mf = MELO[(bgmStep/2)%16|0]; if (mf) blip(mf, 0.2, MELW, MELVOL); }
   bgmStep++;
 }
+bgmSeed(0);   // 開場(選單)也有自己的一首
 function bgmStart(){ if (bgmTimer) return; bgmTimer = setInterval(bgmTick, 260); }
 
 // ---------- 曉臻預烤語音(播報人聲鐵律:mp3 有就播,沒有就靜默,絕不機器聲) ----------
@@ -806,6 +826,7 @@ function menuTap(p){
 }
 function startGame(forceLv){
   level = forceLv || maxLevel();
+  bgmSeed(level);   // ★ BGM 百曲庫 0726:每一關不同曲
   loadStars();
   curTarget = Math.round(M.target * (1 + (level-1)*0.5));
   sprint = isSprintLevel(level);
