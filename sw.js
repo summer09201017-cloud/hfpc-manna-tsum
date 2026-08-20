@@ -1,4 +1,4 @@
-var CACHE_NAME = 'manna-tsum-v19';
+var CACHE_NAME = 'manna-tsum-v20';
 var SHELL = ['./', './index.html', './game.js', './manifest.webmanifest',
              './voice/intro.mp3', './voice/bless.mp3', './voice/win.mp3'];
 self.addEventListener('install', function(e){
@@ -22,4 +22,9 @@ self.addEventListener('fetch', function(e){
       return res;
     }).catch(function(){ return hit; });
   }));
+});
+
+// 🏷️ 版號回報(0820 全艦隊批次):頁尾徽章問「實際執行中的版本」,答案=本 SW 的快取名。
+self.addEventListener('message', function (e) {
+  if (e && e.data === 'GET_VERSION' && e.source) e.source.postMessage({ type: 'SW_VERSION', v: CACHE_NAME });
 });
